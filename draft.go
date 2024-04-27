@@ -1,21 +1,21 @@
 /*
     @TODO: all values should be []bytes
 	@TODO: implement channels to allow communication and key exchange between peers
-    
+
 */
 
 package main
 
 import (
-    "crypto/rsa"
-    "crypto/sha256"
-    "fmt"
-    "time"
-    crand "crypto/rand"
+	"bytes"
+	crand "crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"fmt"
+	"time"
 )
 
 // Diffie-Hellman for key exchange
-
 
 // Peer struct to hold details of each participant
 // @todo: we should have one sender and one receiver
@@ -92,15 +92,15 @@ func main() {
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver RSA keys generated")
     // Create a channel to send the random numbers and key
     // Channels are FIFO
-    msgChan := make(chan string)
+    msgChan := make(chan []bytes)
     keyChan := make(chan rsa.PublicKey)
 
     
     // Generates two random messages and
     // sends them to the channel + key
     go func() {
-        x0 := "test0"
-        x1 := "test1"
+        x0 := []byte("test0")
+        x1 := []byte("test1")
         msgChan <- x0
         msgChan <- x1
         // Send the sender's public key
@@ -125,16 +125,17 @@ func main() {
     // Chooses which message to receive
     sigma := 1
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver chose sigma:", sigma)
+    v := 0
     if(sigma == 0){
-        v := (x0 + encK) % senderPubKey.N
+        v = (x0 + encK) % senderPubKey.N
     } else {
-        v := (x1 + encK) % senderPubKey.N
+        v = (x1 + encK) % senderPubKey.N
     }
     // Sends v to the sender
     msgChan <- v
 
     /*Sender receives v and decrypts*/
-    v := <-msgChan
+    incomingV := <-msgChan
     k0, _ := Decrypt(sender.PrivateKey, (v-x0)%sender.N)
     k1, _ := Decrypt(sender.PrivateKey, (v-x1)%sender.N)
 
