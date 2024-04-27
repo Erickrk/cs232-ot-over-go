@@ -6,11 +6,12 @@
 package main
 
 import (
-    "crypto/rand"
     "crypto/rsa"
     "crypto/sha256"
     "fmt"
     "time"
+    crand "crypto/rand"
+    mrand "math/rand"
 )
 
 // Diffie-Hellman for key exchange
@@ -53,7 +54,7 @@ func Encrypt(pubKey *rsa.PublicKey, msg string) ([]byte, error) {
 	 The padded message is then encrypted with the RSA algorithm.
 	 rsa.EncryptOAEP function works with byte slices, not strings, thus we have to convert msg.
 	*/ 
-    ciphertext, err := rsa.EncryptOAEP(hash, rand.Reader, pubKey, []byte(msg), label)
+    ciphertext, err := rsa.EncryptOAEP(hash, crand.Reader, pubKey, []byte(msg), label)
     if err != nil {
         return nil, err
     }
@@ -73,7 +74,7 @@ func Encrypt(pubKey *rsa.PublicKey, msg string) ([]byte, error) {
 func Decrypt(privKey *rsa.PrivateKey, ciphertext []byte) (string, error) {
     label := []byte("")
     hash := sha256.New()
-    plaintext, err := rsa.DecryptOAEP(hash, rand.Reader, privKey, ciphertext, label)
+    plaintext, err := rsa.DecryptOAEP(hash, crand.Reader, privKey, ciphertext, label)
     if err != nil {
         return "", err
     }
@@ -81,26 +82,49 @@ func Decrypt(privKey *rsa.PrivateKey, ciphertext []byte) (string, error) {
 }
 
 func main() {
-    startTime := time.Now()
+    //startTime := time.Now()
 
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Starting the protocol simulation")
 
-    receiver, _ := GenerateRSAKeys()
+    // Sender routine
+    sender, _ := GenerateRSAKeys()
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver RSA keys generated")
+    // Create a channel to send the random numbers and key
+    // Channels are FIFO
+    msgChan := make(chan int)
+    keyChan := make(chan rsa.PublicKey)
 
-    obliviousKey, _ := GenerateRSAKeys()
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver RSA keys generated")
+    
+    // Generate two random numbers
+    go func() {
+        x0 := mrand.Intn(100)
+        x1 := mrand.Intn(100)
+        msgChan <- x0
+        msgChan <- x1
+        // Send the sender's public key
+        keyChan <- sender.PublicKey
+    }()
 
+    // Receive the random numbers and public key from the channel
+    x0 := <-msgChan
+    x1 := <-msgChan
+    senderPubKey := <-keyChan
+
+    fmt.Println("Random Number 1:", x0)
+    fmt.Println("Random Number 2:", x1)
+    fmt.Println("Sender's Public Key expoent:", senderPubKey.E)
+    fmt.Println("Sender's Public Key N:", senderPubKey.N)
+    /*
     sigma := 1
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver chose sigma:", sigma)
 
     var pk0, pk1 *rsa.PublicKey
     if sigma == 0 {
-        pk0 = &receiver.PublicKey
+        pk0 = &sender.PublicKey
         pk1 = &obliviousKey.PublicKey
     } else {
         pk0 = &obliviousKey.PublicKey
-        pk1 = &receiver.PublicKey
+        pk1 = &sender.PublicKey
     }
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Public keys assigned")
 
@@ -124,5 +148,5 @@ func main() {
     
     endTime := time.Now()
     fmt.Println("Total execution time in milliseconds:", endTime.Sub(startTime).Milliseconds())
-
+*/
 }
