@@ -1,6 +1,7 @@
 /*
+    @TODO: all values should be []bytes
 	@TODO: implement channels to allow communication and key exchange between peers
-
+    
 */
 
 package main
@@ -11,13 +12,13 @@ import (
     "fmt"
     "time"
     crand "crypto/rand"
-    mrand "math/rand"
 )
 
 // Diffie-Hellman for key exchange
 
 
 // Peer struct to hold details of each participant
+// @todo: we should have one sender and one receiver
 type Peer struct {
     Name  string
     Mode  string // "sender" or "receiver"
@@ -35,7 +36,7 @@ type Peer struct {
 func GenerateRSAKeys() (*rsa.PrivateKey, error) {
 	// Rand.reader is a global, shared instance of a cryptographically secure random number generator
 	// 2048 is the key size
-    key, err := rsa.GenerateKey(rand.Reader, 2048)
+    key, err := rsa.GenerateKey(crand.Reader, 2048)
     if err != nil {
         return nil, err
     }
@@ -91,62 +92,63 @@ func main() {
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver RSA keys generated")
     // Create a channel to send the random numbers and key
     // Channels are FIFO
-    msgChan := make(chan int)
+    msgChan := make(chan string)
     keyChan := make(chan rsa.PublicKey)
 
     
-    // Generate two random numbers
+    // Generates two random messages and
+    // sends them to the channel + key
     go func() {
-        x0 := mrand.Intn(100)
-        x1 := mrand.Intn(100)
+        x0 := "test0"
+        x1 := "test1"
         msgChan <- x0
         msgChan <- x1
         // Send the sender's public key
         keyChan <- sender.PublicKey
     }()
 
+    /*Receiver*/
     // Receive the random numbers and public key from the channel
     x0 := <-msgChan
     x1 := <-msgChan
     senderPubKey := <-keyChan
 
-    fmt.Println("Random Number 1:", x0)
-    fmt.Println("Random Number 2:", x1)
-    fmt.Println("Sender's Public Key expoent:", senderPubKey.E)
+    fmt.Println("Random string 1:", x0)
+    fmt.Println("Random string 2:", x1)
+    fmt.Println("Sender's Public Key expoent:", senderPubKey.E) // is this a constant value??
     fmt.Println("Sender's Public Key N:", senderPubKey.N)
-    /*
+
+
+    k := "test2"
+    fmt.Println("Random string k:", k)
+    encK, _ := Encrypt(&senderPubKey, k)
+    // Chooses which message to receive
     sigma := 1
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver chose sigma:", sigma)
-
-    var pk0, pk1 *rsa.PublicKey
-    if sigma == 0 {
-        pk0 = &sender.PublicKey
-        pk1 = &obliviousKey.PublicKey
+    if(sigma == 0){
+        v := (x0 + encK) % senderPubKey.N
     } else {
-        pk0 = &obliviousKey.PublicKey
-        pk1 = &sender.PublicKey
+        v := (x1 + encK) % senderPubKey.N
     }
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Public keys assigned")
+    // Sends v to the sender
+    msgChan <- v
+
+    /*Sender receives v and decrypts*/
+    v := <-msgChan
+    k0, _ := Decrypt(sender.PrivateKey, (v-x0)%sender.N)
+    k1, _ := Decrypt(sender.PrivateKey, (v-x1)%sender.N)
 
     m0 := "Hello, world!"
     m1 := "Goodbye, world!"
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Sender created messages")
 
-    c0, _ := Encrypt(pk0, m0)
-    c1, _ := Encrypt(pk1, m1)
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Sender encrypted messages")
-
-    var decryptedMessage string
-    if sigma == 0 {
-        decryptedMessage, _ = Decrypt(receiver, c0)
-    } else {
-        decryptedMessage, _ = Decrypt(receiver, c1)
-    }
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver decrypted the desired message")
-
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Decrypted message:", decryptedMessage)
-    
+    m0p := m0 + k0
+    m1p := m1 + k1
+    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Sender hid the messages")
+    x0 := <-msgChan
+    x1 := <-msgChan
+  
     endTime := time.Now()
     fmt.Println("Total execution time in milliseconds:", endTime.Sub(startTime).Milliseconds())
-*/
+
 }
