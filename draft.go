@@ -7,7 +7,8 @@
 package main
 
 import (
-	"bytes"
+	//"bytes"
+    "math/big"
 	crand "crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -82,6 +83,24 @@ func Decrypt(privKey *rsa.PrivateKey, ciphertext []byte) (string, error) {
     return string(plaintext), nil
 }
 
+/*
+ Receiver v generation
+*/
+func calculateV(sigma int, x0, x1, encK []byte, senderPubKey rsa.PublicKey) []byte {
+    x0Int := new(big.Int).SetBytes(x0)
+    x1Int := new(big.Int).SetBytes(x1)
+    encKInt := new(big.Int).SetBytes(encK)
+
+    v := new(big.Int)
+    if sigma == 0 {
+        v.Add(x0Int, encKInt)
+    } else {
+        v.Add(x1Int, encKInt)
+    }
+    v.Mod(v, senderPubKey.N)
+    return v.Bytes()
+}
+
 func main() {
     //startTime := time.Now()
 
@@ -92,7 +111,7 @@ func main() {
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver RSA keys generated")
     // Create a channel to send the random numbers and key
     // Channels are FIFO
-    msgChan := make(chan []bytes)
+    msgChan := make(chan []byte)
     keyChan := make(chan rsa.PublicKey)
 
     
@@ -118,19 +137,14 @@ func main() {
     fmt.Println("Sender's Public Key expoent:", senderPubKey.E) // is this a constant value??
     fmt.Println("Sender's Public Key N:", senderPubKey.N)
 
-
     k := "test2"
     fmt.Println("Random string k:", k)
     encK, _ := Encrypt(&senderPubKey, k)
     // Chooses which message to receive
     sigma := 1
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver chose sigma:", sigma)
-    v := 0
-    if(sigma == 0){
-        v = (x0 + encK) % senderPubKey.N
-    } else {
-        v = (x1 + encK) % senderPubKey.N
-    }
+
+    v := calculateV(sigma, x0, x1, encK, senderPubKey)
     // Sends v to the sender
     msgChan <- v
 
