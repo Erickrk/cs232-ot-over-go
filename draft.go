@@ -1,7 +1,8 @@
 /*
     @TODO: all values should be []bytes
 	@TODO: implement channels to allow communication and key exchange between peers
-
+    // Diffie-Hellman for key exchange
+    // mmo OT
 */
 
 package main
@@ -16,7 +17,6 @@ import (
 	"time"
 )
 
-// Diffie-Hellman for key exchange
 
 // Peer struct to hold details of each participant
 // @todo: we should have one sender and one receiver
@@ -149,16 +149,30 @@ func main() {
     msgChan <- v
 
     /*Sender receives v and decrypts*/
-    incomingV := <-msgChan
-    k0, _ := Decrypt(sender.PrivateKey, (v-x0)%sender.N)
-    k1, _ := Decrypt(sender.PrivateKey, (v-x1)%sender.N)
+    // We need to change to big.Int to perform operations
+    incomingV := new(big.Int).SetBytes(<-msgChan)
+    preK0 := new(big.Int).Sub(incomingV, new(big.Int).SetBytes(x0))
+    preK1 := new(big.Int).Sub(incomingV, new(big.Int).SetBytes(x1))
+
+    k0, _ := Decrypt(sender, preK0.Bytes())
+    k1, _ := Decrypt(sender, preK1.Bytes())
+
+    k0BigInt := new(big.Int)
+    k0BigInt.SetString(k0, 10) // 10 is the base
+
+    k1BigInt := new(big.Int)
+    k1BigInt.SetString(k1, 10) // 10 is the base
+
+
+    k0 = new(big.Int).Mod(k0BigInt, &sender.PublicKey.N)
+    k1 = new(big.Int).Mod(k1BigInt, sender.PublicKey.N)
 
     m0 := "Hello, world!"
     m1 := "Goodbye, world!"
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Sender created messages")
 
-    m0p := m0 + k0
-    m1p := m1 + k1
+    m0p := m0 + k0Str
+    m1p := m1 + k1Str
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Sender hid the messages")
     x0 := <-msgChan
     x1 := <-msgChan
