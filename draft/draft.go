@@ -1,6 +1,4 @@
 /*
-    @TODO: all values should be []bytes
-	@TODO: implement channels to allow communication and key exchange between peers
     // Diffie-Hellman for key exchange
     // mmo OT
 */
@@ -8,7 +6,7 @@
 package main
 
 import (
-	//"bytes"
+	"strings"
     "math/big"
 	crand "crypto/rand"
 	"crypto/rsa"
@@ -16,7 +14,6 @@ import (
 	"fmt"
 	"time"
 )
-
 
 // Peer struct to hold details of each participant
 // @todo: we should have one sender and one receiver
@@ -90,6 +87,8 @@ func calculateV(sigma int, x0, x1, encK []byte, senderPubKey rsa.PublicKey) []by
     x0Int := new(big.Int).SetBytes(x0)
     x1Int := new(big.Int).SetBytes(x1)
     encKInt := new(big.Int).SetBytes(encK)
+    
+    encKInt.Mod(encKInt, senderPubKey.N) // those two should really be pointers?
 
     v := new(big.Int)
     if sigma == 0 {
@@ -97,12 +96,11 @@ func calculateV(sigma int, x0, x1, encK []byte, senderPubKey rsa.PublicKey) []by
     } else {
         v.Add(x1Int, encKInt)
     }
-    v.Mod(v, senderPubKey.N)
     return v.Bytes()
 }
 
 func main() {
-    //startTime := time.Now()
+    startTime := time.Now()
 
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Starting the protocol simulation")
 
@@ -111,29 +109,29 @@ func main() {
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver RSA keys generated")
     // Create a channel to send the random numbers and key
     // Channels are FIFO
-    msgChan := make(chan []byte)
-    keyChan := make(chan rsa.PublicKey)
+    // Those are buffered channels but we should use go routines to avoid blocking
+    msgChan := make(chan []byte, 5)
+    keyChan := make(chan rsa.PublicKey, 5)
 
     
     // Generates two random messages and
     // sends them to the channel + key
-    go func() {
-        x0 := []byte("test0")
-        x1 := []byte("test1")
-        msgChan <- x0
-        msgChan <- x1
-        // Send the sender's public key
-        keyChan <- sender.PublicKey
-    }()
+
+    x0 := []byte("test0")
+    x1 := []byte("test1")
+    msgChan <- x0
+    msgChan <- x1
+    // Send the sender's public key
+    keyChan <- sender.PublicKey
 
     /*Receiver*/
     // Receive the random numbers and public key from the channel
-    x0 := <-msgChan
-    x1 := <-msgChan
+    tx0 := <-msgChan
+    tx1 := <-msgChan
     senderPubKey := <-keyChan
 
-    fmt.Println("Random string 1:", x0)
-    fmt.Println("Random string 2:", x1)
+    fmt.Println("Random string 1:", tx0)
+    fmt.Println("Random string 2:", tx1)
     fmt.Println("Sender's Public Key expoent:", senderPubKey.E) // is this a constant value??
     fmt.Println("Sender's Public Key N:", senderPubKey.N)
 
@@ -141,42 +139,68 @@ func main() {
     fmt.Println("Random string k:", k)
     encK, _ := Encrypt(&senderPubKey, k)
     // Chooses which message to receive
-    sigma := 1
+    sigma := 0
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver chose sigma:", sigma)
 
-    v := calculateV(sigma, x0, x1, encK, senderPubKey)
+    v := calculateV(sigma, tx0, tx1, encK, senderPubKey)
     // Sends v to the sender
     msgChan <- v
 
     /*Sender receives v and decrypts*/
     // We need to change to big.Int to perform operations
-    incomingV := new(big.Int).SetBytes(<-msgChan)
-    preK0 := new(big.Int).Sub(incomingV, new(big.Int).SetBytes(x0))
-    preK1 := new(big.Int).Sub(incomingV, new(big.Int).SetBytes(x1))
+    incomingV := <-msgChan
+    incomingVBytes := new(big.Int).SetBytes(incomingV)
+    preK0 := new(big.Int).Sub(incomingVBytes, new(big.Int).SetBytes(x0))
+    preK1 := new(big.Int).Sub(incomingVBytes, new(big.Int).SetBytes(x1))
 
     k0, _ := Decrypt(sender, preK0.Bytes())
     k1, _ := Decrypt(sender, preK1.Bytes())
 
+    // We need to convert k0 and k1 to a big.Int to perform operations
+ 
     k0BigInt := new(big.Int)
     k0BigInt.SetString(k0, 10) // 10 is the base
 
     k1BigInt := new(big.Int)
-    k1BigInt.SetString(k1, 10) // 10 is the base
+    k1BigInt.SetString(k1, 10)
 
-
-    k0 = new(big.Int).Mod(k0BigInt, &sender.PublicKey.N)
-    k1 = new(big.Int).Mod(k1BigInt, sender.PublicKey.N)
+    // We need to convert N to a big.Int to perform operations
+    k0Str := new(big.Int).Mod(k0BigInt, new(big.Int).Set(sender.PublicKey.N)).String()
+    k1Str := new(big.Int).Mod(k1BigInt, new(big.Int).Set(sender.PublicKey.N)).String()
 
     m0 := "Hello, world!"
     m1 := "Goodbye, world!"
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Sender created messages")
 
-    m0p := m0 + k0Str
-    m1p := m1 + k1Str
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Sender hid the messages")
-    x0 := <-msgChan
-    x1 := <-msgChan
+    m0p := []byte(m0 + k0Str)
+    m1p := []byte(m1 + k1Str)
+    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "SENDER STEP 4: hide the messages")
+    msgChan <- m0p
+    msgChan <- m1p
   
+    // Receiver receives the messages
+    m0r := <-msgChan
+    m1r := <-msgChan
+    kInt := new(big.Int)
+    kInt.SetString(k, 10)
+
+    // Receiver retrieves the messages
+    msg := new(big.Int)
+    if sigma == 0 {
+        m0rInt := new(big.Int).SetBytes(m0r)
+        msg.Sub(m0rInt, kInt)
+    } else {
+        m1rInt := new(big.Int).SetBytes(m1r)
+        msg.Sub(m1rInt, kInt)
+    }
+
+    // Convert the message to a string
+    msgBytes := big.NewInt(0).Set(msg).Bytes()
+    msgStr := string(msgBytes)
+    msgStr = strings.TrimRight(msgStr, "0") // string was finishing with zero so we need to remove it
+
+    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "REC STEP 4: retrieves the message ", msgStr)
+
     endTime := time.Now()
     fmt.Println("Total execution time in milliseconds:", endTime.Sub(startTime).Milliseconds())
 
