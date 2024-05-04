@@ -1,6 +1,7 @@
 /*
   Can we send messages more than once?
   Final implemententation
+  To run: go run main.go
 */
 
 package main
@@ -12,6 +13,8 @@ import (
     "fmt"
     "math/big"
     "time"
+    "strings"
+    "sync"
 )
 
 /*
@@ -66,22 +69,16 @@ func Decrypt(privKey *rsa.PrivateKey, ciphertext []byte) (string, error) {
     return string(plaintext), nil
 }
 
-// Receiver v calculation
-
-func calculateV(sigma int, x0, x1, encK []byte, senderPubKey rsa.PublicKey) []byte {
-    x0Int := new(big.Int).SetBytes(x0)
-    x1Int := new(big.Int).SetBytes(x1)
-    encKInt := new(big.Int).SetBytes(encK)
-    encKInt.Mod(encKInt, senderPubKey.N)
-
-    v := new(big.Int)
-    if sigma == 0 {
-        v.Add(x0Int, encKInt)
-    } else {
-        v.Add(x1Int, encKInt)
+func generateRandomBytes() ([]byte, error) {
+    x := make([]byte, 16)
+    _, err := rand.Read(x)
+    if err != nil {
+        fmt.Println("Error generating random value:", err)
+        return nil, err
     }
-    return v.Bytes()
+    return x, nil
 }
+
 /*Sender steps*/
 func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV chan []byte) {
     senderKeys, err := GenerateRSAKeys()
@@ -92,10 +89,12 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver RSA keys generated")
 
     // Generates two random messages and sends them to the channel + key
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Sender sending test messages and Public Key")
+    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Sender sending random messages messages and Public Key")
     keyChan <- &senderKeys.PublicKey // @TODO is this ok to be a pointer?
-    x0 := []byte("test0")
-    x1 := []byte("test1")
+    //x0 := []byte("test0")
+    //x1 := []byte("test1")
+    x0, _ := generateRandomBytes()
+    x1, _ := generateRandomBytes()
     msgChan <- x0
     msgChan <- x1
 
@@ -118,9 +117,16 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
     k0Str := new(big.Int).Mod(k0BigInt, new(big.Int).Set(senderKeys.PublicKey.N)).String()
     k1Str := new(big.Int).Mod(k1BigInt, new(big.Int).Set(senderKeys.PublicKey.N)).String()
 
-    m0 := "Hello, world!"
-    m1 := "Goodbye, world!"
+    // Sender creates the messages
+    // Space is currently breaking the string, what is anoying for sending sets
+    // It is possible to send something like [alex,mateo,joao]
+    var m0, m1 string
+    fmt.Println("Enter message 0:")
+    fmt.Scanln(&m0)
+    fmt.Println("Enter message 1:")
+    fmt.Scanln(&m1)
     fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Sender created messages")
+    
     // messages zero and one prime
     m0p := []byte(m0 + k0Str)
     m1p := []byte(m1 + k1Str)
@@ -130,6 +136,22 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
 
 }
 
+// Receiver v calculation
+func calculateV(sigma int, x0, x1, encK []byte, senderPubKey rsa.PublicKey) []byte {
+    x0Int := new(big.Int).SetBytes(x0)
+    x1Int := new(big.Int).SetBytes(x1)
+    encKInt := new(big.Int).SetBytes(encK)
+    encKInt.Mod(encKInt, senderPubKey.N)
+
+    v := new(big.Int)
+    if sigma == 0 {
+        v.Add(x0Int, encKInt)
+    } else {
+        v.Add(x1Int, encKInt)
+    }
+    return v.Bytes()
+}
+/*Receiver steps*/
 func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV chan []byte) {
     senderPubKey := <-keyChan
     tx0 := <-msgChan
@@ -139,15 +161,19 @@ func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV cha
     fmt.Println("Sender's Public Key expoent:", senderPubKey.E) // @TODO: is this a constant value??
     fmt.Println("Sender's Public Key N:", senderPubKey.N)
 
-    k := "test2"
+    kBytes, _ := generateRandomBytes()
+    k := string(kBytes)
     fmt.Println("Random string k:", k)
 
     encK, _ := Encrypt(senderPubKey, k)
-    sigma := 0 //@TODO: how to make this dynamic?
+
+    var sigma int
+    fmt.Println("Choose sigma 0 or 1:") //  should check if value is valid
+    fmt.Scanln(&sigma)
+    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver choose sigma", sigma)
 
     v := calculateV(sigma, tx0, tx1, encK, *senderPubKey)
     sendV <- v
-    //@TODO: start here
     // Receiver receives the messages
     m0r := <-msgChan
     m1r := <-msgChan
@@ -178,15 +204,28 @@ func main() {
 
     // Create a channel to send the random numbers and key
     // Channels are FIFO
-    // Those are buffered channels but we should use go routines to avoid blocking
-    msgChan := make(chan []byte, 2)
+    msgChan := make(chan []byte) // Removed buffer, does it break?
     keyChan := make(chan *rsa.PublicKey)
     receiveV := make(chan []byte)
 
-    go senderRoutine(msgChan, keyChan, receiveV)
-    go receiverRoutine(msgChan, keyChan, receiveV)
+    var wg sync.WaitGroup
+    wg.Add(2) // Add the number of goroutines to wait for
 
-    time.Sleep(1 * time.Second) // Wait for goroutines to finish
+    go func() {
+        senderRoutine(msgChan, keyChan, receiveV)
+        wg.Done() // Decrease the WaitGroup counter when the goroutine finishes
+    }()
+
+    go func() {
+        receiverRoutine(msgChan, keyChan, receiveV)
+        wg.Done() // Decrease the WaitGroup counter when the goroutine finishes
+    }()
+
+    wg.Wait() // Wait for all goroutines to finish
+    // Used to run in around 100 ms before User Input
+    // time metrics could be better without counting IO time
     endTime := time.Now()
     fmt.Println("Total execution time in milliseconds:", endTime.Sub(startTime).Milliseconds())
 }
+
+
