@@ -1,6 +1,15 @@
 /*
+  ********************************************************************************
+  Final implemententation of the Practical 1 out of 2 OT protocol for CS232
+  Goal: receiver can choose which message to receive without revealing their choice to the sender
+    and the sender cannot determine which message was transferred.
+  Prints are for a semi-honest party, showing what they could read if curious.
+  Terminal output was used over comments so we can see the flow of the protocol while running.
+  Make prints as debug?
+  Used to run in around 100 ms before User Input
+  time metrics could be better without counting IO time  
   Can we send messages more than once?
-  Final implemententation
+  ********************************************************************************
   To run: go run main.go
 */
 
@@ -18,6 +27,7 @@ import (
 )
 
 /*
+    @todo: FIX THIS
     FIRST PHASE:
         Setup: Allow the sender to initialize the protocol with two messages, M0M0 and M1M1. 
         a) Generates key pair
@@ -41,7 +51,6 @@ func GenerateRSAKeys() (*rsa.PrivateKey, error) {
     return key, nil
 }
 
-// Encrypt encrypts the message with the given public key
 /*
     OAEP:  Optimal Asymmetric Encryption Padding
     In RSA-OAEP, the message is not directly encrypted with the RSA algorithm.
@@ -59,7 +68,6 @@ func Encrypt(pubKey *rsa.PublicKey, msg string) ([]byte, error) {
     return ciphertext, err
 }
 
-// Decrypt decrypts the ciphertext with the given private key
 func Decrypt(privKey *rsa.PrivateKey, ciphertext []byte) (string, error) {
     hash := sha256.New()
     plaintext, err := rsa.DecryptOAEP(hash, rand.Reader, privKey, ciphertext, nil)
@@ -69,6 +77,7 @@ func Decrypt(privKey *rsa.PrivateKey, ciphertext []byte) (string, error) {
     return string(plaintext), nil
 }
 
+// We need to generate random bytes to use as messages
 func generateRandomBytes() ([]byte, error) {
     x := make([]byte, 16)
     _, err := rand.Read(x)
@@ -79,24 +88,26 @@ func generateRandomBytes() ([]byte, error) {
     return x, nil
 }
 
-/*Sender steps*/
+/*
+  ********************************************************************************
+  Sender steps
+  ********************************************************************************
+*/
 func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV chan []byte) {
+
     senderKeys, err := GenerateRSAKeys()
     if err != nil {
         fmt.Println("Error generating keys:", err)
         return
     }
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver RSA keys generated")
+    fmt.Println("SENDER STEP 1: generated RSA key-pair")
 
-    // Generates two random messages and sends them to the channel + key
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Sender sending random messages messages and Public Key")
-    keyChan <- &senderKeys.PublicKey // @TODO is this ok to be a pointer?
-    //x0 := []byte("test0")
-    //x1 := []byte("test1")
+    keyChan <- &senderKeys.PublicKey
     x0, _ := generateRandomBytes()
     x1, _ := generateRandomBytes()
     msgChan <- x0
     msgChan <- x1
+    fmt.Println("SENDER STEP 2: Generated random messages. Now sending random messages and Public Key to Receiver", x0, x1)
 
     // Sender receives v and decrypts
     v := <-receiveV
@@ -117,7 +128,11 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
     k0Str := new(big.Int).Mod(k0BigInt, new(big.Int).Set(senderKeys.PublicKey.N)).String()
     k1Str := new(big.Int).Mod(k1BigInt, new(big.Int).Set(senderKeys.PublicKey.N)).String()
 
-    // Sender creates the messages
+    // @TODO: START HERE is this equal to the real k? can it distinguish both?
+    // why printing zero?
+    fmt.Printf("SENDER STEP 3: Decrypts the two possible ks %v and %v\n", k0Str, k0Str)
+
+    // Sender inputs the messages
     // Space is currently breaking the string, what is anoying for sending sets
     // It is possible to send something like [alex,mateo,joao]
     var m0, m1 string
@@ -125,17 +140,25 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
     fmt.Scanln(&m0)
     fmt.Println("Enter message 1:")
     fmt.Scanln(&m1)
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Sender created messages")
-    
     // messages zero and one prime
     m0p := []byte(m0 + k0Str)
     m1p := []byte(m1 + k1Str)
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "SENDER STEP 4: hid the messages")
     msgChan <- m0p
     msgChan <- m1p
-
+    fmt.Printf( "SENDER STEP 4: hid the messages 0: %v and 1:%v now is sending them on the channel\n", m0p, m1p)
 }
 
+/*
+  ********************************************************************************
+  Sender steps end
+  ********************************************************************************
+*/
+
+/*
+  ********************************************************************************
+  Receiver steps
+  ********************************************************************************
+*/
 // Receiver v calculation
 func calculateV(sigma int, x0, x1, encK []byte, senderPubKey rsa.PublicKey) []byte {
     x0Int := new(big.Int).SetBytes(x0)
@@ -151,29 +174,35 @@ func calculateV(sigma int, x0, x1, encK []byte, senderPubKey rsa.PublicKey) []by
     }
     return v.Bytes()
 }
-/*Receiver steps*/
 func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV chan []byte) {
     senderPubKey := <-keyChan
     tx0 := <-msgChan
     tx1 := <-msgChan
-    fmt.Println("Random string 1:", tx0)
-    fmt.Println("Random string 2:", tx1)
-    fmt.Println("Sender's Public Key expoent:", senderPubKey.E) // @TODO: is this a constant value??
-    fmt.Println("Sender's Public Key N:", senderPubKey.N)
+    fmt.Printf("RECEIVER STEP 0: received random messages and Public Key\nRandom string 1: %v\nRandom string 2: %v\nSender's Public Key exponent: %v\nSender's Public Key N: %v\n", tx0, tx1, senderPubKey.E, senderPubKey.N)
+
+    // Receiver chooses which messager wants to see
+    var sigma int
+    fmt.Println("Choose sigma 0 or 1:")
+    _, err := fmt.Scanln(&sigma)
+    if err != nil || (sigma != 0 && sigma != 1) {
+        fmt.Println("Invalid value for sigma. Please choose either 0 or 1.")
+        return 
+    }
+    fmt.Println("Receiver chose sigma", sigma)
+
 
     kBytes, _ := generateRandomBytes()
     k := string(kBytes)
-    fmt.Println("Random string k:", k)
+    fmt.Println("\nRECEIVER STEP 1: Generated random message k:", k)
 
     encK, _ := Encrypt(senderPubKey, k)
-
-    var sigma int
-    fmt.Println("Choose sigma 0 or 1:") //  should check if value is valid
-    fmt.Scanln(&sigma)
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Receiver choose sigma", sigma)
+    fmt.Println("RECEIVER STEP 2: Encrypted random message k:", encK)
 
     v := calculateV(sigma, tx0, tx1, encK, *senderPubKey)
     sendV <- v
+
+    fmt.Printf("RECEIVER STEP 3: Calculated v %v and now is sending on the channel\n", v)
+
     // Receiver receives the messages
     m0r := <-msgChan
     m1r := <-msgChan
@@ -181,26 +210,31 @@ func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV cha
     kInt.SetString(k, 10)
 
     // Receiver retrieves the messages
-    msg := new(big.Int)
-    if sigma == 0 {
-        m0rInt := new(big.Int).SetBytes(m0r)
-        msg.Sub(m0rInt, kInt)
-    } else {
-        m1rInt := new(big.Int).SetBytes(m1r)
-        msg.Sub(m1rInt, kInt)
-    }
+    msg0 := new(big.Int)
+    msg1 := new(big.Int)
 
-    // Convert the message to a string
-    msgBytes := big.NewInt(0).Set(msg).Bytes()
-    msgStr := string(msgBytes)
-    msgStr = strings.TrimRight(msgStr, "0") // string was finishing with zero so we need to remove it
+    m0rInt := new(big.Int).SetBytes(m0r)
+    msg0.Sub(m0rInt, kInt)
+    m1rInt := new(big.Int).SetBytes(m1r)
+    msg1.Sub(m1rInt, kInt)
+    
+    // Convert the messages to strings
+    msg0Bytes := big.NewInt(0).Set(msg0).Bytes()
+    msg0Str := string(msg0Bytes)
+    msg0Str = strings.TrimRight(msg0Str, "0") 
 
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "REC STEP 4: retrieves the message ", msgStr)
+    msg1Bytes := big.NewInt(0).Set(msg1).Bytes()
+    msg1Str := string(msg1Bytes)
+    msg1Str = strings.TrimRight(msg1Str, "0") 
+
+    fmt.Printf( "RECEIVER STEP 4: Retrieved the message %v for sigma %v\n", msg0Str, sigma)
+    fmt.Printf( "CURIOUS RECEIVER STEP 5: Retrieved the message %v for sigma %v\n", msg1Str, 1 - sigma)
+
 }
 
 func main() {
     startTime := time.Now()
-    fmt.Println(time.Now().UnixNano()/int64(time.Millisecond), "Starting the protocol simulation")
+    fmt.Println( "Starting the protocol simulation")
 
     // Create a channel to send the random numbers and key
     // Channels are FIFO
@@ -222,8 +256,6 @@ func main() {
     }()
 
     wg.Wait() // Wait for all goroutines to finish
-    // Used to run in around 100 ms before User Input
-    // time metrics could be better without counting IO time
     endTime := time.Now()
     fmt.Println("Total execution time in milliseconds:", endTime.Sub(startTime).Milliseconds())
 }
