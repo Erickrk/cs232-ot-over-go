@@ -79,7 +79,7 @@ func Decrypt(privKey *rsa.PrivateKey, ciphertext []byte) (string, error) {
 
 // We need to generate random bytes to use as messages
 func generateRandomBytes() ([]byte, error) {
-    x := make([]byte, 16)
+    x := make([]byte, 30)
     _, err := rand.Read(x)
     if err != nil {
         fmt.Println("Error generating random value:", err)
@@ -115,10 +115,12 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
     preK0 := new(big.Int).Sub(incomingVBytes, new(big.Int).SetBytes(x0))
     preK1 := new(big.Int).Sub(incomingVBytes, new(big.Int).SetBytes(x1))
 
+    // issue in the conversion here too
     k0, _ := Decrypt(senderKeys, preK0.Bytes())
     k1, _ := Decrypt(senderKeys, preK1.Bytes()) 
 
     // We need to convert k0 and k1 to a big.Int to perform operations
+    // becomes zero here
     k0BigInt := new(big.Int)
     k0BigInt.SetString(k0, 10) // 10 is the base
     k1BigInt := new(big.Int)
@@ -127,6 +129,15 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
     // Now we need to mod k0 and k1 with the public key N and then convert them to string
     k0Str := new(big.Int).Mod(k0BigInt, new(big.Int).Set(senderKeys.PublicKey.N)).String()
     k1Str := new(big.Int).Mod(k1BigInt, new(big.Int).Set(senderKeys.PublicKey.N)).String()
+
+    fmt.Println("DEBUG: preK0:", preK0)
+    fmt.Println("DEBUG: preK1:", preK1)
+    fmt.Println("DEBUG: k0:", k0) // empty?
+    fmt.Println("DEBUG: k1:", k1)
+    fmt.Println("DEBUG: k0BIG:", k0BigInt) // empty?
+    fmt.Println("DEBUG: k1BIG:", k1BigInt)
+    fmt.Println("DEBUG: k0Str:", k0Str)
+    fmt.Println("DEBUG: k1Str:", k1Str)
 
     // @TODO: START HERE is this equal to the real k? can it distinguish both?
     // why printing zero?
