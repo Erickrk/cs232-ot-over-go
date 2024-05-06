@@ -67,7 +67,8 @@ func Encrypt(pubKey *rsa.PublicKey, msg string) ([]byte, error) {
     }
     return ciphertext, err
 }
-
+// The message must be no longer than the length of the public modulus minus twice the hash length, minus a further 2.
+// The public modulus is 2048 bits, or 256 bytes, so the message must be no longer than 256 - 2*32 - 2 = 190 bytes.
 func Decrypt(privKey *rsa.PrivateKey, ciphertext []byte) (string, error) {
     hash := sha256.New()
     plaintext, err := rsa.DecryptOAEP(hash, rand.Reader, privKey, ciphertext, nil)
@@ -136,22 +137,18 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
     incomingVBytes := new(big.Int).SetBytes(v)
     preK0 := new(big.Int).Sub(incomingVBytes, new(big.Int).SetBytes(x0))
     preK1 := new(big.Int).Sub(incomingVBytes, new(big.Int).SetBytes(x1))
-
-    //fmt.Println("DEBUG: preK0:", preK0)
-    //fmt.Println("DEBUG: preK1:", preK1)
+    
+    preK0bytes := preK0.Bytes()
+    preK1bytes := preK1.Bytes()
+    fmt.Println("DEBUG: preK0:", len(preK0bytes))
+    fmt.Println("DEBUG: preK1:", len(preK1bytes))
     
     // issue in the conversion here too
-    k0, err := decryptWithPadding(senderKeys, preK0) // decrypt error here, how is this different from the other?
-    if err != nil {
-        fmt.Println("Error decrypting k0:", err)
-        return
-    }
+
+    k0, err := Decrypt(senderKeys, preK0bytes)
+    k1, err := Decrypt(senderKeys, preK1bytes)
     fmt.Println("DEBUG: k0:", k0)
-    k1, err := decryptWithPadding(senderKeys, preK1)
-    if err != nil {
-        fmt.Println("Error decrypting k1:", err)
-        return
-    }
+    fmt.Println("DEBUG: k1:", k1)
 
     // We need to convert k0 and k1 to a big.Int to perform operations
     // becomes zero here
@@ -213,6 +210,7 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
   ********************************************************************************
 */
 // Receiver v calculation
+// this value is too big??
 func calculateV(sigma int, x0, x1, encK []byte, senderPubKey rsa.PublicKey) []byte {
     x0Int := new(big.Int).SetBytes(x0)
     x1Int := new(big.Int).SetBytes(x1)
