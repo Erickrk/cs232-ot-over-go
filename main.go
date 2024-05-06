@@ -69,33 +69,15 @@ func Encrypt(pubKey *rsa.PublicKey, msg string) ([]byte, error) {
 }
 // The message must be no longer than the length of the public modulus minus twice the hash length, minus a further 2.
 // The public modulus is 2048 bits, or 256 bytes, so the message must be no longer than 256 - 2*32 - 2 = 190 bytes.
+
 func Decrypt(privKey *rsa.PrivateKey, ciphertext []byte) (string, error) {
     hash := sha256.New()
     plaintext, err := rsa.DecryptOAEP(hash, rand.Reader, privKey, ciphertext, nil)
     if err != nil {
-        return "", err
+        fdata, _ := generateRandomBytes()
+        return string(fdata), err
     }
     return string(plaintext), nil
-}
-// Trying to solve issues with message size on decryption
-func decryptWithPadding(privKey *rsa.PrivateKey, cipherText *big.Int) (string, error) {
-    //keySize := privKey.PublicKey.N.BitLen() / 8  // Get the key size in bytes
-    bytes := cipherText.Bytes()
-    // fmt.Println("DEBUG: keySize:", keySize)
-    // fmt.Println("DEBUG: bytes:", bytes)
-    // if len(bytes) < keySize {
-    //     paddedBytes := make([]byte, keySize-len(bytes))
-    //     bytes = append(paddedBytes, bytes...)  // Pad the slice with leading zeros
-    //     fmt.Println("Had to do padding")
-    // }
-
-    // Now decrypt using the correctly padded byte slice
-    fmt.Println("DEBUG: bytes:", len(bytes))
-    fmt.Println("DEBUG: privkey:", privKey)
-    decryptedText, err := Decrypt(privKey, bytes)
-    fmt.Println("DEBUG: decryptedText:", decryptedText)
-
-    return decryptedText, err
 }
 
 // We need to generate random bytes to use as messages
@@ -107,6 +89,9 @@ func generateRandomBytes() ([]byte, error) {
         return nil, err
     }
     return x, nil
+
+
+
 }
 
 /*
@@ -140,47 +125,37 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
     
     preK0bytes := preK0.Bytes()
     preK1bytes := preK1.Bytes()
-    fmt.Println("DEBUG: preK0:", len(preK0bytes))
-    fmt.Println("DEBUG: preK1:", len(preK1bytes))
+    //fmt.Println("DEBUG: preK0:", len(preK0bytes))
+    //fmt.Println("DEBUG: preK1:", len(preK1bytes))
     
-    // issue in the conversion here too
-
+    // Can't have error handling so we don't leak information
     k0, err := Decrypt(senderKeys, preK0bytes)
     k1, err := Decrypt(senderKeys, preK1bytes)
-    fmt.Println("DEBUG: k0:", k0)
-    fmt.Println("DEBUG: k1:", k1)
+
+    //fmt.Println("DEBUG: k0:", k0)
+    //fmt.Println("DEBUG: k1:", k1)
 
     // We need to convert k0 and k1 to a big.Int to perform operations
-    // becomes zero here
-    k0BigInt := new(big.Int)
-    _, ok := k0BigInt.SetString(k0, 16) // 10 is the base
-    if !ok {
-        fmt.Println("Error converting k0 to big.Int")
-        return
-    }
-    
-    k1BigInt := new(big.Int)
-    _, ok = k1BigInt.SetString(k1, 16)
-    if !ok {
-        fmt.Println("Error converting k1 to big.Int")
-        return
-    }
+    k0Slice := []byte(k0)
+    k0BigInt := new(big.Int).SetBytes(k0Slice)
+
+    k1Slice := []byte(k1)
+    k1BigInt := new(big.Int).SetBytes(k1Slice)
 
     // Now we need to mod k0 and k1 with the public key N and then convert them to string
-    k0Str := new(big.Int).Mod(k0BigInt, new(big.Int).Set(senderKeys.PublicKey.N)).String()
-    k1Str := new(big.Int).Mod(k1BigInt, new(big.Int).Set(senderKeys.PublicKey.N)).String()
+    k0Str := new(big.Int).Mod(k0BigInt, new(big.Int).Set(senderKeys.PublicKey.N))
+    k1Str := new(big.Int).Mod(k1BigInt, new(big.Int).Set(senderKeys.PublicKey.N))
 
 
-    fmt.Println("DEBUG: k0:", k0) // empty?
-    fmt.Println("DEBUG: k1:", k1)
-    fmt.Println("DEBUG: k0BIG:", k0BigInt) // empty?
-    fmt.Println("DEBUG: k1BIG:", k1BigInt)
-    fmt.Println("DEBUG: k0Str:", k0Str)
-    fmt.Println("DEBUG: k1Str:", k1Str)
+    // fmt.Println("DEBUG: k0:", k0) // empty?
+    // fmt.Println("DEBUG: k1:", k1)
+    // fmt.Println("DEBUG: k0BIG:", k0BigInt) // empty?
+    // fmt.Println("DEBUG: k1BIG:", k1BigInt)
+    // fmt.Println("DEBUG: k0Str:", k0Str)
+    // fmt.Println("DEBUG: k1Str:", k1Str)
 
     // @TODO: START HERE is this equal to the real k? can it distinguish both?
-    // why printing zero?
-    fmt.Printf("SENDER STEP 3: Decrypts the two possible ks %v and %v\n", k0Str, k0Str)
+    fmt.Printf("SENDER STEP 3: Decrypts the two possible ks %v and %v\n", k0Str, k1Str)
 
     // Sender inputs the messages
     // Space is currently breaking the string, what is anoying for sending sets
@@ -190,9 +165,17 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
     fmt.Scanln(&m0)
     fmt.Println("Enter message 1:")
     fmt.Scanln(&m1)
+
     // messages zero and one prime
-    m0p := []byte(m0 + k0Str)
-    m1p := []byte(m1 + k1Str)
+    // Converting to byte slice and then big.Int to perform operations
+    m0Big := new(big.Int).SetBytes([]byte(m0))
+    m1Big := new(big.Int).SetBytes([]byte(m1))
+    m0p := new(big.Int).Add(m0Big, k0Str).Bytes()
+    m1p := new(big.Int).Add(m1Big, k1Str).Bytes()
+
+    fmt.Println("Message 0 Prime:", m0p)
+    fmt.Println("Message 1 Prime:", m1p)
+    
     msgChan <- m0p
     msgChan <- m1p
     fmt.Printf( "SENDER STEP 4: hid the messages 0: %v and 1:%v now is sending them on the channel\n", m0p, m1p)
