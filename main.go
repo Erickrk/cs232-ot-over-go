@@ -76,10 +76,30 @@ func Decrypt(privKey *rsa.PrivateKey, ciphertext []byte) (string, error) {
     }
     return string(plaintext), nil
 }
+// Trying to solve issues with message size on decryption
+func decryptWithPadding(privKey *rsa.PrivateKey, cipherText *big.Int) (string, error) {
+    //keySize := privKey.PublicKey.N.BitLen() / 8  // Get the key size in bytes
+    bytes := cipherText.Bytes()
+    // fmt.Println("DEBUG: keySize:", keySize)
+    // fmt.Println("DEBUG: bytes:", bytes)
+    // if len(bytes) < keySize {
+    //     paddedBytes := make([]byte, keySize-len(bytes))
+    //     bytes = append(paddedBytes, bytes...)  // Pad the slice with leading zeros
+    //     fmt.Println("Had to do padding")
+    // }
+
+    // Now decrypt using the correctly padded byte slice
+    fmt.Println("DEBUG: bytes:", len(bytes))
+    fmt.Println("DEBUG: privkey:", privKey)
+    decryptedText, err := Decrypt(privKey, bytes)
+    fmt.Println("DEBUG: decryptedText:", decryptedText)
+
+    return decryptedText, err
+}
 
 // We need to generate random bytes to use as messages
 func generateRandomBytes() ([]byte, error) {
-    x := make([]byte, 30)
+    x := make([]byte, 16)
     _, err := rand.Read(x)
     if err != nil {
         fmt.Println("Error generating random value:", err)
@@ -111,27 +131,49 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
 
     // Sender receives v and decrypts
     v := <-receiveV
+    // fmt.Println("SENDER STEP 2.5: Received v from Receiver", v)
+
     incomingVBytes := new(big.Int).SetBytes(v)
     preK0 := new(big.Int).Sub(incomingVBytes, new(big.Int).SetBytes(x0))
     preK1 := new(big.Int).Sub(incomingVBytes, new(big.Int).SetBytes(x1))
 
+    //fmt.Println("DEBUG: preK0:", preK0)
+    //fmt.Println("DEBUG: preK1:", preK1)
+    
     // issue in the conversion here too
-    k0, _ := Decrypt(senderKeys, preK0.Bytes())
-    k1, _ := Decrypt(senderKeys, preK1.Bytes()) 
+    k0, err := decryptWithPadding(senderKeys, preK0) // decrypt error here, how is this different from the other?
+    if err != nil {
+        fmt.Println("Error decrypting k0:", err)
+        return
+    }
+    fmt.Println("DEBUG: k0:", k0)
+    k1, err := decryptWithPadding(senderKeys, preK1)
+    if err != nil {
+        fmt.Println("Error decrypting k1:", err)
+        return
+    }
 
     // We need to convert k0 and k1 to a big.Int to perform operations
     // becomes zero here
     k0BigInt := new(big.Int)
-    k0BigInt.SetString(k0, 10) // 10 is the base
+    _, ok := k0BigInt.SetString(k0, 16) // 10 is the base
+    if !ok {
+        fmt.Println("Error converting k0 to big.Int")
+        return
+    }
+    
     k1BigInt := new(big.Int)
-    k1BigInt.SetString(k1, 10)
+    _, ok = k1BigInt.SetString(k1, 16)
+    if !ok {
+        fmt.Println("Error converting k1 to big.Int")
+        return
+    }
 
     // Now we need to mod k0 and k1 with the public key N and then convert them to string
     k0Str := new(big.Int).Mod(k0BigInt, new(big.Int).Set(senderKeys.PublicKey.N)).String()
     k1Str := new(big.Int).Mod(k1BigInt, new(big.Int).Set(senderKeys.PublicKey.N)).String()
 
-    fmt.Println("DEBUG: preK0:", preK0)
-    fmt.Println("DEBUG: preK1:", preK1)
+
     fmt.Println("DEBUG: k0:", k0) // empty?
     fmt.Println("DEBUG: k1:", k1)
     fmt.Println("DEBUG: k0BIG:", k0BigInt) // empty?
@@ -177,11 +219,17 @@ func calculateV(sigma int, x0, x1, encK []byte, senderPubKey rsa.PublicKey) []by
     encKInt := new(big.Int).SetBytes(encK)
     encKInt.Mod(encKInt, senderPubKey.N)
 
+    //fmt.Println("x0Int:", x0Int)
+    //fmt.Println("x1Int:", x1Int)
+    //fmt.Println("encKInt:", encKInt)
+
     v := new(big.Int)
     if sigma == 0 {
-        v.Add(x0Int, encKInt)
+        v = v.Add(x0Int, encKInt)
+        //fmt.Println("Performed the add to 0:", v)
     } else {
-        v.Add(x1Int, encKInt)
+        v = v.Add(x1Int, encKInt)
+        //fmt.Println("Performed the add to 1:", v)
     }
     return v.Bytes()
 }
@@ -201,12 +249,15 @@ func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV cha
     }
     fmt.Println("Receiver chose sigma", sigma)
 
-
     kBytes, _ := generateRandomBytes()
     k := string(kBytes)
     fmt.Println("\nRECEIVER STEP 1: Generated random message k:", k)
 
-    encK, _ := Encrypt(senderPubKey, k)
+    encK, err := Encrypt(senderPubKey, k)
+    if err != nil {
+        fmt.Println("Error encrypting message:", err)
+        return
+    }
     fmt.Println("RECEIVER STEP 2: Encrypted random message k:", encK)
 
     v := calculateV(sigma, tx0, tx1, encK, *senderPubKey)
@@ -269,6 +320,8 @@ func main() {
     wg.Wait() // Wait for all goroutines to finish
     endTime := time.Now()
     fmt.Println("Total execution time in milliseconds:", endTime.Sub(startTime).Milliseconds())
+    // Maybe it could wait for user input here?
+
 }
 
 
