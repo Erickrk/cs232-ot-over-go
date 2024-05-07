@@ -22,7 +22,7 @@ import (
     "fmt"
     "math/big"
     "time"
-    "strings"
+    //"strings"
     "sync"
 )
 
@@ -166,6 +166,8 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
     fmt.Println("Enter message 1:")
     fmt.Scanln(&m1)
 
+    //m0p := []byte(m0)
+    //m1p := []byte(m1)
     // messages zero and one prime
     // Converting to byte slice and then big.Int to perform operations
     m0Big := new(big.Int).SetBytes([]byte(m0))
@@ -250,7 +252,7 @@ func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV cha
     m0r := <-msgChan
     m1r := <-msgChan
     kInt := new(big.Int)
-    kInt.SetString(k, 10)
+    kInt.SetBytes(kBytes)
 
     // Receiver retrieves the messages
     msg0 := new(big.Int)
@@ -261,14 +263,20 @@ func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV cha
     m1rInt := new(big.Int).SetBytes(m1r)
     msg1.Sub(m1rInt, kInt)
     
+    fmt.Println("DEBUG: kInt:", kInt)
+    fmt.Println("DEBUG: m0rInt:", m0rInt)
+    fmt.Println("DEBUG: msg0:", msg0)
+    fmt.Println("DEBUG: m1rInt:", m1rInt)
+    fmt.Println("DEBUG: msg1:", msg1)
+
     // Convert the messages to strings
     msg0Bytes := big.NewInt(0).Set(msg0).Bytes()
     msg0Str := string(msg0Bytes)
-    msg0Str = strings.TrimRight(msg0Str, "0") 
+    //msg0Str = strings.TrimRight(msg0Str, "0") 
 
     msg1Bytes := big.NewInt(0).Set(msg1).Bytes()
     msg1Str := string(msg1Bytes)
-    msg1Str = strings.TrimRight(msg1Str, "0") 
+   // msg1Str = strings.TrimRight(msg1Str, "0") 
 
     fmt.Printf( "RECEIVER STEP 4: Retrieved the message %v for sigma %v\n", msg0Str, sigma)
     fmt.Printf( "CURIOUS RECEIVER STEP 5: Retrieved the message %v for sigma %v\n", msg1Str, 1 - sigma)
@@ -281,7 +289,7 @@ func main() {
 
     // Create a channel to send the random numbers and key
     // Channels are FIFO
-    msgChan := make(chan []byte) // Removed buffer, does it break?
+    msgChan := make(chan []byte)
     keyChan := make(chan *rsa.PublicKey)
     receiveV := make(chan []byte)
 
