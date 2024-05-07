@@ -229,20 +229,22 @@ func calculateV(sigma int, x0, x1, encK []byte, senderPubKey rsa.PublicKey) []by
 	return v.Bytes()
 }
 
-// @todo: continue review from here
 func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV chan []byte) {
 	senderPubKey := <-keyChan
 	tx0 := <-msgChan
 	tx1 := <-msgChan
 	fmt.Printf("RECEIVER STEP 0: received random messages and Public Key\nRandom string 1: %v\nRandom string 2: %v\nSender's Public Key exponent: %v\nSender's Public Key N: %v\n", tx0, tx1, senderPubKey.E, senderPubKey.N)
 
-	// Receiver chooses which messager wants to see
+	// Receiver chooses which message wants to see
 	var sigma int
-	fmt.Println("Choose sigma 0 or 1:")
-	_, err := fmt.Scanln(&sigma)
-	if err != nil || (sigma != 0 && sigma != 1) {
-		fmt.Println("Invalid value for sigma. Please choose either 0 or 1.")
-		return
+	for {
+		fmt.Println("RECEIVER: Choose sigma 0 or 1:")
+		_, err := fmt.Scanln(&sigma)
+		if err != nil || (sigma != 0 && sigma != 1) {
+			fmt.Println("Invalid value for sigma.")
+		} else {
+			break
+		}
 	}
 	fmt.Println("Receiver chose sigma", sigma)
 
@@ -269,6 +271,7 @@ func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV cha
 	kInt.SetBytes(kBytes)
 
 	// Receiver retrieves the messages
+	// m0r - k and m1r - k = msg0 and msg1
 	msg0 := new(big.Int)
 	msg1 := new(big.Int)
 
@@ -277,11 +280,11 @@ func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV cha
 	m1rInt := new(big.Int).SetBytes(m1r)
 	msg1.Sub(m1rInt, kInt)
 
-	fmt.Println("DEBUG: kInt:", kInt)
-	fmt.Println("DEBUG: m0rInt:", m0rInt)
-	fmt.Println("DEBUG: msg0:", msg0)
-	fmt.Println("DEBUG: m1rInt:", m1rInt)
-	fmt.Println("DEBUG: msg1:", msg1)
+	// fmt.Println("DEBUG: kInt:", kInt)
+	// fmt.Println("DEBUG: m0rInt:", m0rInt)
+	// fmt.Println("DEBUG: msg0:", msg0)
+	// fmt.Println("DEBUG: m1rInt:", m1rInt)
+	// fmt.Println("DEBUG: msg1:", msg1)
 
 	// Convert the messages to strings
 	msg0Bytes := big.NewInt(0).Set(msg0).Bytes()
@@ -292,8 +295,13 @@ func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV cha
 	msg1Str := string(msg1Bytes)
 	// msg1Str = strings.TrimRight(msg1Str, "0")
 
-	fmt.Printf("RECEIVER STEP 4: Retrieved the message %v for sigma %v\n", msg0Str, sigma)
-	fmt.Printf("CURIOUS RECEIVER STEP 5: Retrieved the message %v for sigma %v\n", msg1Str, 1-sigma)
+    if sigma == 0 {
+        fmt.Printf("RECEIVER STEP 4: Retrieved the message %v for sigma %v\n", msg0Str, sigma)
+        fmt.Printf("CURIOUS RECEIVER STEP 5: Retrieved the message %v for sigma %v\n", msg1Str, 1-sigma)
+    } else {
+        fmt.Printf("RECEIVER STEP 4: Retrieved the message %v for sigma %v\n", msg1Str, sigma)
+        fmt.Printf("CURIOUS RECEIVER STEP 5: Retrieved the message %v for sigma %v\n", msg0Str, 1-sigma)
+    }
 
 }
 
@@ -304,6 +312,7 @@ func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV cha
 
 ********************************************************************************
 */
+
 func main() {
 	startTime := time.Now()
 	fmt.Println("Starting the protocol simulation")
@@ -327,9 +336,9 @@ func main() {
 		wg.Done() // Decrease the WaitGroup counter when the goroutine finishes
 	}()
 
-	wg.Wait() // Wait for all goroutines to finish
-	endTime := time.Now()
-	fmt.Println("Total execution time in milliseconds:", endTime.Sub(startTime).Milliseconds())
-	// Maybe it could wait for user input here?
-
+    wg.Wait() // Wait for all goroutines to finish
+    endTime := time.Now()
+    fmt.Println("Total execution time in milliseconds:", endTime.Sub(startTime).Milliseconds())
+    fmt.Println("Press Enter to finish...")
+    fmt.Scanln()
 }
