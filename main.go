@@ -76,7 +76,7 @@ func Decrypt(privKey *rsa.PrivateKey, ciphertext []byte) (string, error) {
 	plaintext, err := rsa.DecryptOAEP(hash, rand.Reader, privKey, ciphertext, nil)
 	if err != nil {
 		fdata, _ := generateRandomBytes()
-		return string(fdata), err
+		return string(fdata), nil
 	}
 	return string(plaintext), nil
 }
@@ -100,6 +100,16 @@ func generateRandomBytes() ([]byte, error) {
 ********************************************************************************
 */
 func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV chan []byte) {
+
+	// Sender inputs the messages
+	// Space is currently breaking the string, what is anoying for sending sets
+	// It is possible to send something like [alex,mateo,joao]
+	var m0, m1 string
+	fmt.Println("SENDER: Enter message 0:")
+	fmt.Scanln(&m0)
+	fmt.Println("SENDER: Enter message 1:")
+	fmt.Scanln(&m1)
+
 	senderKeys, err := GenerateRSAKeys()
 	if err != nil {
 		fmt.Println("Error generating keys:", err)
@@ -156,15 +166,6 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
 	// fmt.Println("DEBUG: k1Str:", k1Str)
 
 	fmt.Printf("SENDER STEP 3: Decrypts the two possible ks %v and %v\n", k0Str, k1Str)
-
-	// Sender inputs the messages
-	// Space is currently breaking the string, what is anoying for sending sets
-	// It is possible to send something like [alex,mateo,joao]
-	var m0, m1 string
-	fmt.Println("SENDER: Enter message 0:")
-	fmt.Scanln(&m0)
-	fmt.Println("SENDER: Enter message 1:")
-	fmt.Scanln(&m1)
 
 	// messages zero and one prime
 	// Converting to byte slice and then big.Int to perform operations
@@ -280,13 +281,13 @@ func receiverRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, sendV cha
 	msg1Str := string(msg1Bytes)
 	// msg1Str = strings.TrimRight(msg1Str, "0")
 
-    if sigma == 0 {
-        fmt.Printf("RECEIVER STEP 4: Retrieved the message %v for sigma %v\n", msg0Str, sigma)
-        fmt.Printf("CURIOUS RECEIVER STEP 5: Retrieved the message %v for sigma %v\n", msg1Str, 1-sigma)
-    } else {
-        fmt.Printf("RECEIVER STEP 4: Retrieved the message %v for sigma %v\n", msg1Str, sigma)
-        fmt.Printf("CURIOUS RECEIVER STEP 5: Retrieved the message %v for sigma %v\n", msg0Str, 1-sigma)
-    }
+	if sigma == 0 {
+		fmt.Printf("RECEIVER STEP 4: Retrieved the message %v for sigma %v\n", msg0Str, sigma)
+		fmt.Printf("CURIOUS RECEIVER STEP 5: Retrieved the message %v for sigma %v\n", msg1Str, 1-sigma)
+	} else {
+		fmt.Printf("RECEIVER STEP 4: Retrieved the message %v for sigma %v\n", msg1Str, sigma)
+		fmt.Printf("CURIOUS RECEIVER STEP 5: Retrieved the message %v for sigma %v\n", msg0Str, 1-sigma)
+	}
 
 }
 
@@ -321,9 +322,9 @@ func main() {
 		wg.Done() // Decrease the WaitGroup counter when the goroutine finishes
 	}()
 
-    wg.Wait() // Wait for all goroutines to finish
-    endTime := time.Now()
-    fmt.Println("Total execution time in milliseconds:", endTime.Sub(startTime).Milliseconds())
-    fmt.Println("Press Enter to finish...")
-    fmt.Scanln()
+	wg.Wait() // Wait for all goroutines to finish
+	endTime := time.Now()
+	fmt.Println("Total execution time in milliseconds:", endTime.Sub(startTime).Milliseconds())
+	fmt.Println("Press Enter to finish...")
+	fmt.Scanln()
 }
