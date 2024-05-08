@@ -7,7 +7,6 @@
   Terminal output was used over comments so we can see the flow of the protocol while running.
   Used to run in around 100 ms before User Input
   @todos:
-  Can the protocol run more than once?
   make prints as debug
   time metrics could be better without counting IO time
   ********************************************************************************
@@ -25,20 +24,6 @@ import (
 	"sync"
 	"time"
 )
-
-/*
-   @todo: FIX THIS
-   FIRST PHASE:
-       Setup: Allow the sender to initialize the protocol with two messages, M0M0 and M1M1.
-       a) Generates key pair
-       b) Sender encrypts the two mesages with publick key
-   SECOND PHASE:
-       Transfer: Implement the OT protocol such that the receiver can choose which message
-       to receive (M0M0 or M1M1) without revealing their choice to the sender. Similarly,
-       ensure the sender cannot determine which message was transferred.
-       a) Chooses the message to receive
-       b) Decrypts the result
-*/
 
 /*
   ********************************************************************************
