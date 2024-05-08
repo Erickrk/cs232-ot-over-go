@@ -10,7 +10,7 @@
   make prints as debug
   time metrics could be better without counting IO time
   ********************************************************************************
-  To run: go run main.go
+  To run: go run main.go or main.exe
 */
 
 package main
@@ -83,7 +83,7 @@ func Decrypt(privKey *rsa.PrivateKey, ciphertext []byte) (string, error) {
 
 // We need to generate random bytes to use as messages/placeholders
 func generateRandomBytes() ([]byte, error) {
-	x := make([]byte, 16)
+	x := make([]byte, 150)
 	_, err := rand.Read(x)
 	if err != nil {
 		fmt.Println("Error generating random value:", err)
