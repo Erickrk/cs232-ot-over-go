@@ -105,10 +105,21 @@ func senderRoutine(msgChan chan []byte, keyChan chan *rsa.PublicKey, receiveV ch
 	// Space is currently breaking the string, what is anoying for sending sets
 	// It is possible to send something like [alex,mateo,joao]
 	var m0, m1 string
-	fmt.Println("SENDER: Enter message 0:")
+	fmt.Println("SENDER: Enter message 0 with maximum 120 chars:")
 	fmt.Scanln(&m0)
-	fmt.Println("SENDER: Enter message 1:")
+	for len(m0) > 120 {
+		fmt.Println("Error: Message 0 exceeds maximum length of 120 characters")
+		fmt.Println("SENDER: Enter message 0 with maximum 120 chars:")
+		fmt.Scanln(&m0)
+	}
+
+	fmt.Println("SENDER: Enter message 1 with maximum 120 chars:")
 	fmt.Scanln(&m1)
+	for len(m1) > 120 {
+		fmt.Println("Error: Message 1 exceeds maximum length of 120 characters")
+		fmt.Println("SENDER: Enter message 1 with maximum 120 chars:")
+		fmt.Scanln(&m1)
+	}
 
 	senderKeys, err := GenerateRSAKeys()
 	if err != nil {
